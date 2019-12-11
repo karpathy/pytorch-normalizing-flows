@@ -38,8 +38,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-import scipy.linalg # todo switch to pytorch equivalents
-
 from nflib.nets import LeafParam, MLP, ARMLP
 
 class AffineConstantFlow(nn.Module):
@@ -212,34 +210,35 @@ class IAF(MAF):
 class Invertible1x1Conv(nn.Module):
     """ 
     As introduced in Glow paper.
-    Slight mod from https://github.com/tonyduan/normalizing-flows/blob/master/nf/flows.py
     """
     
     def __init__(self, dim):
         super().__init__()
         self.dim = dim
-        W, _ = scipy.linalg.qr(np.random.randn(dim, dim))
-        P, L, U = scipy.linalg.lu(W)
-        self.P = torch.tensor(P, dtype=torch.float)
-        self.L = nn.Parameter(torch.tensor(L, dtype=torch.float))
-        self.S = nn.Parameter(torch.tensor(np.diag(U), dtype=torch.float))
-        self.U = nn.Parameter(torch.triu(torch.tensor(U, dtype=torch.float), diagonal=1))
-        self.W_inv = None
+        Q = torch.nn.init.orthogonal_(torch.randn(dim, dim))
+        P, L, U = torch.lu_unpack(*Q.lu())
+        self.P = P # remains fixed during optimization
+        self.L = nn.Parameter(L) # lower triangular portion
+        self.S = nn.Parameter(U.diag()) # "crop out" the diagonal to its own parameter
+        self.U = nn.Parameter(torch.triu(U, diagonal=1)) # "crop out" diagonal, stored in S
 
-    def forward(self, x):
+    def _assemble_W(self):
+        """ assemble W from its pieces (P, L, U, S) """
         L = torch.tril(self.L, diagonal=-1) + torch.diag(torch.ones(self.dim))
         U = torch.triu(self.U, diagonal=1)
-        z = x @ self.P @ L @ (U + torch.diag(self.S))
+        W = self.P @ L @ (U + torch.diag(self.S))
+        return W
+
+    def forward(self, x):
+        W = self._assemble_W()
+        z = x @ W
         log_det = torch.sum(torch.log(torch.abs(self.S)))
         return z, log_det
 
     def backward(self, z):
-        if self.W_inv is None:
-            L = torch.tril(self.L, diagonal=-1) + torch.diag(torch.ones(self.dim))
-            U = torch.triu(self.U, diagonal=1)
-            W = self.P @ L @ (U + torch.diag(self.S))
-            self.W_inv = torch.inverse(W)
-        x = z @ self.W_inv
+        W = self._assemble_W()
+        W_inv = torch.inverse(W)
+        x = z @ W_inv
         log_det = -torch.sum(torch.log(torch.abs(self.S)))
         return x, log_det
 
