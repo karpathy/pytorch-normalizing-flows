@@ -20,6 +20,21 @@ class LeafParam(nn.Module):
     def forward(self, x):
         return self.p.expand(x.size(0), self.p.size(1))
 
+class PositionalEncoder(nn.Module):
+    """
+    Each dimension of the input gets expanded out with sins/coses
+    to "carve" out the space. Useful in low-dimensional cases with
+    tightly "curled up" data.
+    """
+    def __init__(self, freqs=(.5,1,2,4,8)):
+        super().__init__()
+        self.freqs = freqs
+        
+    def forward(self, x):
+        sines = [torch.sin(x * f) for f in self.freqs]
+        coses = [torch.cos(x * f) for f in self.freqs]
+        out = torch.cat(sines + coses, dim=1)
+        return out
 
 class MLP(nn.Module):
     """ a simple 4-layer MLP """
@@ -34,6 +49,21 @@ class MLP(nn.Module):
             nn.Linear(nh, nh),
             nn.LeakyReLU(0.2),
             nn.Linear(nh, nout),
+        )
+    def forward(self, x):
+        return self.net(x)
+
+class PosEncMLP(nn.Module):
+    """ 
+    Position Encoded MLP, where the first layer performs position encoding.
+    Each dimension of the input gets transformed to len(freqs)*2 dimensions
+    using a fixed transformation of sin/cos of given frequencies.
+    """
+    def __init__(self, nin, nout, nh, freqs=(.5,1,2,4,8)):
+        super().__init__()
+        self.net = nn.Sequential(
+            PositionalEncoder(freqs),
+            MLP(nin * len(freqs) * 2, nout, nh),
         )
     def forward(self, x):
         return self.net(x)
