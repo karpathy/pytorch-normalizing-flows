@@ -15,7 +15,7 @@ class LeafParam(nn.Module):
     """
     def __init__(self, n):
         super().__init__()
-        self.p = nn.Parameter(torch.Tensor(1,n))
+        self.p = nn.Parameter(torch.zeros(1,n))
     
     def forward(self, x):
         return self.p.expand(x.size(0), self.p.size(1))
