@@ -114,7 +114,9 @@ class AffineHalfFlow(nn.Module):
         z1 = torch.exp(s) * x1 + t # transform this half as a function of the other
         if self.parity:
             z0, z1 = z1, z0
-        z = torch.cat([z0, z1], dim=1)
+        z = torch.zeros((x.shape[0], self.dim))  
+        z[:,::2] = z0
+        z[:,1::2] = z1
         log_det = torch.sum(s, dim=1)
         return z, log_det
     
@@ -128,7 +130,9 @@ class AffineHalfFlow(nn.Module):
         x1 = (z1 - t) * torch.exp(-s) # reverse the transform on this half
         if self.parity:
             x0, x1 = x1, x0
-        x = torch.cat([x0, x1], dim=1)
+        x = torch.zeros((z.shape[0], self.dim))  
+        x[:,::2] = x0
+        x[:,1::2] = x1
         log_det = torch.sum(-s, dim=1)
         return x, log_det
 
